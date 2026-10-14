@@ -9,6 +9,7 @@ a pozdeji znovu pouzit.
 
 from __future__ import annotations
 
+import os
 import numpy as np
 
 
@@ -28,7 +29,7 @@ class PCA:
     Atributy (naplneny az v ``fit``, do te doby ``None``):
         components_: np.ndarray tvaru (n_features, n_components_) — hlavni
             komponenty ulozene ve sloupcich.
-        mean_: np.ndarray tvaru (n_features,) — prumer trenovacich dat.
+        mean_: np.ndarray tvaru (n_feature  s,) — prumer trenovacich dat.
         eigenvalues_: np.ndarray — vlastni cisla serazena SESTUPNE.
         explained_variance_ratio_: np.ndarray — podil vysvetleneho rozptylu
             pripadajici na jednotliva vlastni cisla (soucet = 1).
@@ -81,6 +82,13 @@ class PCA:
         # assert  Overte, ze x je typu np.ndarray.
         # assert  Overte, ze x ma 2 rozmery (matice vzorky x priznaky).
         # assert  Overte, ze x obsahuje alespon 2 vzorky (m >= 2).
+        assert isinstance(x,np.ndarray)
+        assert x.ndim == 2
+        assert x.shape[0] >= 2
+
+        m = x.shape[0]
+        xc = x - x.mean(axis=0)
+        return xc.T @ xc / (m - 1)
         raise NotImplementedError(
             "Úkol: spoctete kovariancni matici (n_features x n_features) "
             "vektorizovane — vycentrujte sloupce a vratte (xc.T @ xc) / (m - 1)."
@@ -109,6 +117,14 @@ class PCA:
         # assert  Overte, ze eigenvalues je 1D np.ndarray.
         # assert  Overte, ze eigenvalues jsou serazena sestupne.
         # assert  Overte, ze 0 < self.variance_threshold <= 100.
+        assert isinstance(eigenvalues, np.ndarray)
+        assert eigenvalues.ndim == 1
+        assert np.all(np.diff(eigenvalues) <= 0)
+        assert 0 < self.variance_threshold <= 100
+        ratio = eigenvalues/eigenvalues.sum()
+        cumulative = np.cumsum(ratio) * 100.0
+        idx = int(np.argmax(cumulative >= self.variance_threshold))
+        return idx + 1
         raise NotImplementedError(
             "Úkol: vratte nejmensi pocet komponent, jejichz kumulativni "
             "vysvetleny rozptyl dosahne self.variance_threshold procent."
@@ -188,6 +204,10 @@ class PCA:
         """
         # assert  Overte, ze model je naucen (self.components_ neni None).
         # assert  Overte, ze X.shape[1] == self.mean_.shape[0].
+        assert self.components_ is not None and self.mean_ is not None
+        assert x.shape[1] == self.mean_.shape[0]
+        return (x- self.mean_) @ self.components_
+
         raise NotImplementedError(
             "Úkol: promitnete vycentrovana data na self.components_, "
             "tedy vratte (X - self.mean_) @ self.components_."
@@ -211,6 +231,9 @@ class PCA:
         """
         # assert  Overte, ze model je naucen (self.components_ neni None).
         # assert  Overte, ze X_pca.shape[1] == self.n_components_.
+        assert self.components_ is not None and self.mean_ is not None
+        assert x_pca.shape[1] == self.n_components_
+        return x_pca @ self.components_.T + self.mean_
         raise NotImplementedError(
             "Úkol: rekonstruujte data zpet do puvodniho prostoru, "
             "tedy vratte X_pca @ self.components_.T + self.mean_."
@@ -241,10 +264,16 @@ class PCA:
         Format ``.npz`` uklada jen ciselna pole.
         """
         # assert  Overte, ze model je naucen (self.components_ neni None).
-        raise NotImplementedError(
-            "Úkol: ulozte naucena pole modelu do souboru .npz pomoci np.savez "
-            "(minimalne components_ a mean_, plus dalsi pole pro obnovu stavu)."
+        assert self.components_ is not None and self.mean_ is not None
+        np.savez(
+            path,
+            components_=self.components_,
+            mean_=self.mean_,
+            eigenvalues_=self.eigenvalues_,
+            explained_variance_ratio_=self.explained_variance_ratio_,
+            n_components_=self.n_components_,
         )
+
 
     # @classmethod: metoda dostane misto instance (self) samotnou tridu (cls).
     # Diky tomu ji lze volat primo na tride bez existujici instance
@@ -270,6 +299,24 @@ class PCA:
         Transduktivni shlukovani z cv4 zadny takový znovupouzitelny model nema,
         proto tam obdoba ``load`` neexistuje.
         """
+        assert os.path.exists(path)
+        with np.load(path) as data:
+            assert "components_" in data and "mean_" in data
+            components = data["components_"]
+            assert components.ndim == 2
+            obj = cls()
+            obj.components_ = components
+            obj.mean_ = data["mean_"]
+            obj.eigenvalues_ = data["eigenvalues_"] if "eigenvalues_" in data else None
+            obj.explained_variance_ratio_ = (
+                data["explained_variance_ratio_"] if "explained_variance_ratio_" in data else None
+            )
+            if "n_components_" in data:
+                obj.n_components_ = int(data["n_components_"])
+            else:
+                obj.n_components_ = components.shape[1]
+
+            return obj
         # assert  Overte, ze soubor path existuje a obsahuje pole 'components_' a 'mean_'.
         # assert  Overte, ze obnovene components_ maji 2 rozmery.
         raise NotImplementedError(

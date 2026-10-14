@@ -121,9 +121,33 @@ class FilterSelector(FeatureSelector):
         np.ndarray
             Celociselne indexy ponechanych priznaku.
         """
+        assert x.ndim == 2
+        assert len(y) == x.shape[0]
+        assert set(np.unique(y)).issubset({0,1})
         # assert  Ověřte, že X je 2D pole (X.ndim == 2)
         # assert  Ověřte, že len(y) == X.shape[0]
         # assert  Ověřte, že y je binarni (mnozina hodnot je podmnozinou {0, 1})
+        vybrane_indexy: list[int] = []
+        n_features = x.shape[1]
+
+        for j in range(n_features):
+            a = x[y == 0, j]
+            b = x[y == 1, j]
+
+            _, p_shapiro_a = stats.shapiro(a)
+            _, p_shapiro_b = stats.shapiro(b)
+
+            if p_shapiro_a > self.alpha and p_shapiro_b > self.alpha:
+                p_val = float(stats.ttest_ind(a, b).pvalue)
+            else:
+                p_val = float(stats.mannwhitneyu(a, b).pvalue)
+
+            d = self._cohens_d(a, b)
+
+            if p_val < self.alpha and abs(d) >= self.min_effect_size:
+                vybrane_indexy.append(j)
+
+        return np.array(vybrane_indexy, dtype=int)
         raise NotImplementedError(
             "Úkol: implementujte filtrovaci vyber priznaku dvojkriteriem "
             "vyznamnost (p < alpha) A velikost ucinku (|d| >= min_effect_size); "
@@ -296,8 +320,18 @@ class SilhouetteWrapperSelector(WrapperSelector):
         float
             Prumerna silueta (v intervalu ``[-1, 1]``).
         """
+        assert x_subset.ndim == 2
+        assert x_subset.shape[0] > self.n_clusters
         # assert  Ověřte, že X_subset je 2D pole (X_subset.ndim == 2)
         # assert  Ověřte, že X_subset.shape[0] > self.n_clusters
+        kmeans = KMeans(
+            n_clusters=self.n_clusters,
+            random_state=self.random_state,
+            n_init=10,
+        )
+        labels = kmeans.fit_predict(x_subset)
+        return float(silhouette_score(x_subset,labels))
+
         raise NotImplementedError(
             "Úkol: implementujte siluetove skore — nafitujte KMeans na "
             "X_subset a vratte silhouette_score(X_subset, labels); "
@@ -366,9 +400,22 @@ class KNNWrapperSelector(WrapperSelector):
         float
             Podil spravne klasifikovanych testovacich vzorku (``[0, 1]``).
         """
+        assert x_subset.ndim == 2
+        assert len(y) == x_subset.shape[0]
+        assert len(np.unique(y)) >= 2
         # assert  Ověřte, že X_subset je 2D pole (X_subset.ndim == 2)
         # assert  Ověřte, že len(y) == X_subset.shape[0]
         # assert  Ověřte, že y obsahuje aspon 2 tridy
+        x_tr, x_te, y_tr, y_te = train_test_split(
+            x_subset,
+            y,
+            test_size=self.test_size,
+            random_state=self.random_state,
+            stratify=y,
+        )
+        clf = KNeighborsClassifier(n_neighbors=self.n_neighbors)
+        clf.fit(x_tr, y_tr)
+        return float(clf.score(x_te, y_te))
         raise NotImplementedError(
             "Úkol: implementujte skore jako testovaci presnost kNN — "
             "train_test_split, fit KNeighborsClassifier, vratte clf.score; "
